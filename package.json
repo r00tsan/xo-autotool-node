@@ -1,0 +1,22 @@
+{
+  "name": "Autograder",
+  "version": "0.5.3",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "private": true,
+  "dependencies": {
+    "body-parser": "^1.18.2",
+    "core-js": "^2.4.1",
+    "express": "^4.16.2",
+    "express-ws": "^3.0.0",
+    "googleapis": "^26.0.1",
+    "lodash.filter": "^4.6.0",
+    "lodash.take": "^4.1.1",
+    "request": "^2.79.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.14.12"
+  }
+}
