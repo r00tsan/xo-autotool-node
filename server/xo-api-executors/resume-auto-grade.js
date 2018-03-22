@@ -13,6 +13,8 @@ const Request = require('request');
 const api = require('./xo-api-urls');
 const Helper = require('../helper/helper');
 
+const VALID_SCORES = [1,100];
+
 let requestQueue = [];
 let headers;
 let CONFIG;
@@ -73,13 +75,15 @@ function removeQueueElement(request) {
 }
 
 function getJobDetails() {
+  helper.sendMessage(`Requesting pipeline details...`);
   let request = Request.get({
     url: api.jobDetails(CONFIG.jobId),
     headers: helper.getHeaders(true),
   }, function (error, response, body) {
-    if ( helper.errorHandler(response.statusCode, 0) !== 200 ) {
+    if (helper.errorHandler(response.statusCode, 0) !== 200) {
       return;
     }
+    helper.sendMessage(`Pipeline details received`);
     try {
       testDetails = JSON.parse(body).tests.filter((el) => el.test.type === 'RESUME_RUBRIC')[0].test;
       getCandidatesFromGoogleSheet();
@@ -111,26 +115,36 @@ function getCandidatesFromGoogleSheet() {
     scoresFromGoogleSheet = response.data.values
       .filter((item) => {
         const haveLinkedInProfile = item.toString().search('linkedin.com') > -1;
+
         if (haveLinkedInProfile) {
           helper.sendMessage(`Candidate with email ${item[emailColumn]} have LinkedIn link and will be excluded`);
         }
+
         return !haveLinkedInProfile;
       })
       .map((row) => ({
         email: row[emailColumn] ? row[emailColumn].trim() : undefined,
         score: row[gradeColumn] ? row[gradeColumn].trim() : undefined
       }))
-      .filter((v,i,a) =>
-        a.map((el) => el.email).indexOf(v.email) === i // filtering only candidates with unique emails
+      .filter((v) => !!v.email
         && !isNaN(parseInt(v.score, 10))
         && !!v.score// and if candidate have score
-      );
+      )
+      .filter((v, i, a) => {
+        const isUniqueEmail = a.map((el) => el.email).indexOf(v.email) === i;
+        const isValidScore = VALID_SCORES.indexOf(parseInt(v.score, 10)) > -1;
+        return isUniqueEmail && isValidScore;
+      });
+
     if (!scoresFromGoogleSheet.length) {
       helper.sendMessage(`There is no candidates to grade in this sheet`);
+      helper.setStatus('pending');
+      return;
     }
 
     helper.sendMessage(`Candidates received ${response.data.values.length} from google sheet. 
     Unique and candidates that have score: ${scoresFromGoogleSheet.length}`);
+
     getAllCandidatesFromXO(1);
   });
 }
@@ -147,7 +161,7 @@ function getAllCandidatesFromXO(pageSize) {
   }, function (error, response, body) {
     removeQueueElement(request);
 
-    if ( helper.errorHandler(response.statusCode, 0) !== 200 ) {
+    if (helper.errorHandler(response.statusCode, 0) !== 200) {
       return;
     }
 
@@ -162,10 +176,13 @@ function getAllCandidatesFromXO(pageSize) {
       helper.sendMessage(`All candidates fetched, filtering them by emails...`);
       let scoredCandidates = [];
       scoresFromGoogleSheet.forEach((candidate) => {
-        let application = body.content.find(app => app.candidate.email === candidate.email);
-        if (!application || !candidate.score) { return; }
+        let application = body.content.find(app =>
+          app.candidate.email.trim() === candidate.email.trim());
+        if (!application || !candidate.score) {
+          return;
+        }
 
-        if(helper.isCandidateScored(application, testDetails)) {
+        if (helper.isCandidateScored(application, testDetails)) {
           return helper.sendMessage(`
             ${application.candidate.printableName} -
             ${application.candidate.email} -

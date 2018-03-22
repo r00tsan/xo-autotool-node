@@ -1,5 +1,5 @@
 const config = {
-  applicationPort: 3000,
+  applicationPort: 8080,
   googlePrivateKey: {
     "type": "service_account",
     "project_id": "autograder-195311",

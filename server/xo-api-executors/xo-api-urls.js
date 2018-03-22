@@ -1,4 +1,4 @@
-const BASE_URL = 'https://api.crossover.com/api/';
+const BASE_URL = 'https://api-qa.crossover.com/api/';
 const API = {
   getApplication: (appId) => `${BASE_URL}hire/applications/${appId}?avatarType=ACCOUNT_MANAGER`,
   search: (pageSize, avatarType) => `${BASE_URL}hire/applications/search?avatarType=${avatarType}&pageSize=${pageSize}&page=0`,

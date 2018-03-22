@@ -16,10 +16,10 @@ module.exports = {
     CONFIG = config;
     helper = new Helper(CONFIG.ws, CONFIG.username, CONFIG.password);
     headers = helper.getHeaders(true);
-    config.appIdList = helper.appIdsToArray(config.appIdList);
+    config.appIdList = config.appIds;
 
     helper.setStatus('process');
-    startRejection();
+    checkCandidatesStatus();
   },
   abort: (ws) => {
     isAborted = true;
@@ -52,6 +52,72 @@ module.exports = {
 
 function removeQueueElement(request) {
   requestQueue.splice(requestQueue.indexOf(request), 1);
+}
+
+function checkCandidatesStatus() {
+  let counter = 0;
+  CONFIG.appIdList.forEach(element => {
+    let id = element.id ? element.id : element;
+    let request = Request.get({
+      url: api.getApplication(id),
+      headers: helper.getHeaders(true)
+    }, (err, response, body) => {
+      removeQueueElement(request);
+      if (response) {
+        helper.errorHandler(response.statusCode, id);
+      }
+
+      if (isAborted) {
+        helper.sendMessage(`Rejecting was stopped by user`);
+        return helper.setStatus('pending');
+      }
+
+      counter++;
+
+      try {
+        const data = JSON.parse(body);
+        switch (data.status) {
+          case 'ACCEPTED':
+            helper.sendMessage(`Candidate with Application ID ${id} already on marketplace`);
+            removeCandidate();
+            break;
+          case 'REJECTED':
+          case 'CANCELLED':
+            helper.sendMessage(`Candidate with Application ID ${id} was already rejected`);
+            removeCandidate();
+            break;
+          default:
+            if (data.httpStatus === 404) {
+              removeCandidate();
+            } else {
+              helper.sendMessage(`Candidate with Application ID ${id} ready for reject`);
+            }
+            break;
+        }
+      } catch (e) {
+        helper.sendMessage(e.toString());
+      }
+
+      function removeCandidate() {
+        CONFIG.appIdList.splice(
+          CONFIG.appIdList.indexOf(
+            CONFIG.appIdList.find((el) => el.id ? el.id === id : el === id)
+          ), 1);
+        counter--;
+      }
+
+      if (counter === CONFIG.appIdList.length) {
+        helper.sendMessage(`All candidates were tested and ${CONFIG.appIdList.length} ready to reject`);
+        if (CONFIG.appIdList.length) {
+          startRejection();
+        } else {
+          helper.sendMessage(`There is no candidates to endorse. Terminating.`);
+          helper.setStatus('pending');
+        }
+      }
+    });
+    requestQueue.push(request);
+  });
 }
 
 function startRejection() {

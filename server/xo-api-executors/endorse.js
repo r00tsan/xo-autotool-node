@@ -19,8 +19,6 @@ module.exports = {
     helper = new Helper(CONFIG.ws, CONFIG.username, CONFIG.password);
     headers = helper.getHeaders(true);
 
-    CONFIG.appIdList = helper.appIdsToArray(config.appIdList);
-
     helper.setStatus('process');
     checkCandidatesStatus();
   },
@@ -58,14 +56,16 @@ function removeQueueElement(request) {
 
 function checkCandidatesStatus() {
   let counter = 0;
-  CONFIG.appIdList.forEach(element => {
+  CONFIG.appIds.forEach(element => {
     let id = element.id ? element.id : element;
     let request = Request.get({
       url: api.getApplication(id),
       headers: helper.getHeaders(true)
     }, (err, response, body) => {
       removeQueueElement(request);
-      helper.errorHandler(response.statusCode, id);
+      if (response) {
+        helper.errorHandler(response.statusCode, id);
+      }
 
       if (isAborted) {
         helper.sendMessage(`Endorsing was stopped by user`);
@@ -95,16 +95,16 @@ function checkCandidatesStatus() {
       }
 
       function removeCandidate() {
-        CONFIG.appIdList.splice(
-          CONFIG.appIdList.indexOf(
-            CONFIG.appIdList.find((el) => el.id === id)
+        CONFIG.appIds.splice(
+          CONFIG.appIds.indexOf(
+            CONFIG.appIds.find((el) => el.id === id)
           ), 1);
         counter--;
       }
 
-      if (counter === CONFIG.appIdList.length) {
-        helper.sendMessage(`All candidates were tested and ${CONFIG.appIdList.length} ready to endorse`);
-        if(CONFIG.appIdList.length) {
+      if (counter === CONFIG.appIds.length) {
+        helper.sendMessage(`All candidates were tested and ${CONFIG.appIds.length} ready to endorse`);
+        if (CONFIG.appIds.length) {
           endorseCandidates();
         } else {
           helper.sendMessage(`There is no candidates to endorse. Terminating.`);
@@ -118,7 +118,7 @@ function checkCandidatesStatus() {
 
 function endorseCandidates() {
   let counter = 0;
-  CONFIG.appIdList.forEach(element => {
+  CONFIG.appIds.forEach(element => {
     let id = element.id ? element.id : element;
     let request = Request.post({
       url: api.endorse(id),
@@ -126,7 +126,11 @@ function endorseCandidates() {
     }, (err, response) => {
 
       removeQueueElement(request);
-      if ( helper.errorHandler(response.statusCode, id) !== 200 ) {
+      if (!response) {
+        this.setStatus('pending');
+        return;
+      }
+      if (helper.errorHandler(response.statusCode, id) !== 200) {
         return;
       }
 
@@ -136,7 +140,7 @@ function endorseCandidates() {
         return helper.setStatus('pending');
       }
       counter++;
-      if (counter === CONFIG.appIdList.length) {
+      if (counter === CONFIG.appIds.length) {
         fillPreHireForm();
       }
     });
@@ -146,7 +150,7 @@ function endorseCandidates() {
 
 function fillPreHireForm() {
   let counter = 0;
-  CONFIG.appIdList.forEach(element => {
+  CONFIG.appIds.forEach(element => {
     let id = element.id ? element.id : element;
     let englishScore = element.score && element.score !== id ? element.score : DEFAULT_ENGLISH_SCORE;
     let request = Request.put({
@@ -155,7 +159,7 @@ function fillPreHireForm() {
       json: api.payloads.preHireFormCall(englishScore)
     }, (err, response) => {
       removeQueueElement(request);
-      if ( helper.errorHandler(response.statusCode, id) !== 200 ) {
+      if (helper.errorHandler(response.statusCode, id) !== 200) {
         return;
       }
 
@@ -165,7 +169,7 @@ function fillPreHireForm() {
         return helper.setStatus('pending');
       }
       counter++;
-      if (counter === CONFIG.appIdList.length) {
+      if (counter === CONFIG.appIds.length) {
         helper.sendMessage(`Starting approval of candidates`);
         acceptCandidates();
       }
@@ -178,13 +182,13 @@ function acceptCandidates(counter) {
   setTimeout(function () {
     counter = counter ? counter : 0;
 
-    if (counter === CONFIG.appIdList.length) {
+    if (counter === CONFIG.appIds.length) {
       helper.sendMessage(`All candidates were moved to Marketplace!`);
       helper.setStatus('pending');
       return;
     }
 
-    let id = CONFIG.appIdList[counter].id;
+    let id = CONFIG.appIds[counter].id;
 
     let request = Request.post({
       url: api.accept(id),
@@ -192,7 +196,7 @@ function acceptCandidates(counter) {
       body: JSON.stringify(api.payloads.accept(id))
     }, (err, response, body) => {
       removeQueueElement(request);
-      if ( helper.errorHandler(response.statusCode, id) !== 200 ) {
+      if (helper.errorHandler(response.statusCode, id) !== 200) {
         if (response.statusCode === 400) {
           helper.sendMessage(`Candidate with Application ID ${id} already on marketplace`);
         }
@@ -204,7 +208,7 @@ function acceptCandidates(counter) {
         helper.sendMessage(`Accepting was stopped by user`);
         return helper.setStatus('pending');
       }
-      if (counter !== CONFIG.appIdList.length) {
+      if (counter !== CONFIG.appIds.length) {
         acceptCandidates(++counter);
       }
     });
